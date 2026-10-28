@@ -34,7 +34,7 @@
 Для запуска исходников потребуются: Node.js (v18+), Rust (stable), а также системные зависимости Tauri (MSVC Build Tools на Windows, WebKit2GTK на Linux, Xcode CLI на macOS).
 
 ```bash
-# Установка зависимостей фронтенда
+# Установка зависимостей фронта
 npm install
 
 # Запуск приложения в режиме разработки
