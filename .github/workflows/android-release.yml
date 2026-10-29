@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,7 +24,7 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '17'
 
       - name: Setup Rust
@@ -37,13 +38,18 @@ jobs:
           ndk-version: r27
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
+
+      # НОВЫЙ ШАГ: Генерируем Android-проект на сервере GitHub
+      - name: Init Android Project
+        run: npx tauri android init
 
       - name: Decode Keystore
         run: echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > upload-keystore.jks
 
       - name: Create keystore.properties
         run: |
+          mkdir -p src-tauri/gen/android
           cat > src-tauri/gen/android/keystore.properties <<EOF
           storeFile=../../../../upload-keystore.jks
           storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}
