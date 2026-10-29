@@ -58,23 +58,26 @@ jobs:
       - name: Patch build.gradle.kts
         run: |
           cat << 'PYEOF' > patch_gradle.py
-          import re
           path = 'src-tauri/gen/android/app/build.gradle.kts'
           with open(path, 'r') as f:
               content = f.read()
 
-          if 'import java.io.FileInputStream' not in content:
-              content = 'import java.io.FileInputStream\n' + content
+          # Добавляем импорты в самое начало файла
+          imports = "import java.util.Properties\nimport java.io.FileInputStream\n"
+          if 'import java.util.Properties' not in content:
+              content = imports + content
 
+          # Вставляем загрузку свойств перед блоком android
           keystore_load = '''
+          val keystoreProperties = Properties()
           val keystorePropertiesFile = rootProject.file("keystore.properties")
-          val keystoreProperties = java.util.Properties()
           if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
           }
           '''
           content = content.replace('android {', keystore_load + '\nandroid {', 1)
 
+          # Вставляем блок signingConfigs
           signing_configs = '''
               signingConfigs {
                   create("release") {
@@ -87,6 +90,7 @@ jobs:
           '''
           content = content.replace('buildTypes {', signing_configs + '\nbuildTypes {', 1)
 
+          # Применяем подпись в release
           content = content.replace('isMinifyEnabled = false', 'isMinifyEnabled = false\n            signingConfig = signingConfigs.getByName("release")', 1)
 
           with open(path, 'w') as f:
