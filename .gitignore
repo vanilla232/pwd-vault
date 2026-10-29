@@ -2,7 +2,7 @@
 *.enc.bak
 *.bak
 settings.json
-vault*
+vault.enc*
 logs
 *.log
 npm-debug.log*
