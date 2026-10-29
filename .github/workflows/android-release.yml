@@ -43,45 +43,58 @@ jobs:
       - name: Init Android Project
         run: npx tauri android init
 
-      # НОВЫЙ ШАГ: Внедряем настройки подписи в сгенерированный Gradle
-      - name: Patch build.gradle.kts
-        run: |
-          cat << 'EOF' >> src-tauri/gen/android/app/build.gradle.kts
-
-          android {
-              signingConfigs {
-                  create("release") {
-                      val keystorePropertiesFile = rootProject.file("keystore.properties")
-                      if (keystorePropertiesFile.exists()) {
-                          val keystoreProperties = java.util.Properties()
-                          keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
-                          keyAlias = keystoreProperties["keyAlias"] as String
-                          keyPassword = keystoreProperties["keyPassword"] as String
-                          storeFile = file(keystoreProperties["storeFile"] as String)
-                          storePassword = keystoreProperties["storePassword"] as String
-                      }
-                  }
-              }
-              buildTypes {
-                  getByName("release") {
-                      signingConfig = signingConfigs.getByName("release")
-                  }
-              }
-          }
-          EOF
-
       - name: Decode Keystore
         run: echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > upload-keystore.jks
 
       - name: Create keystore.properties
         run: |
-          mkdir -p src-tauri/gen/android
           cat > src-tauri/gen/android/keystore.properties <<EOF
-          storeFile=../../../../upload-keystore.jks
+          storeFile=../../../upload-keystore.jks
           storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
+
+      - name: Patch build.gradle.kts
+        run: |
+          python -c "
+          import re
+          path = 'src-tauri/gen/android/app/build.gradle.kts'
+          with open(path, 'r') as f:
+              content = f.read()
+
+          # Вставляем импорт
+          if 'import java.io.FileInputStream' not in content:
+              content = 'import java.io.FileInputStream\n' + content
+
+          # Вставляем загрузку keystoreProperties перед блоком android
+          keystore_load = '''
+val keystorePropertiesFile = rootProject.file(\"keystore.properties\")
+val keystoreProperties = java.util.Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+}
+'''
+          content = content.replace('android {', keystore_load + '\nandroid {', 1)
+
+          signing_configs = '''
+    signingConfigs {
+        create(\"release\") {
+            keyAlias = keystoreProperties[\"keyAlias\"] as String
+            keyPassword = keystoreProperties[\"keyPassword\"] as String
+            storeFile = file(keystoreProperties[\"storeFile\"] as String)
+            storePassword = keystoreProperties[\"storePassword\"] as String
+        }
+    }
+'''
+          content = content.replace('buildTypes {', signing_configs + '\nbuildTypes {', 1)
+
+          # Применяем подпись внутри блока release
+          content = content.replace('isMinifyEnabled = false', 'isMinifyEnabled = false\n            signingConfig = signingConfigs.getByName(\"release\")', 1)
+
+          with open(path, 'w') as f:
+              f.write(content)
+          "
 
       - name: Build APK
         run: npx tauri android build --apk
