@@ -1,7 +1,8 @@
 use serde::Serialize;
 use std::thread;
 use std::time::Duration;
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::crypto::KdfParams;
 use crate::errors::AppError;
@@ -132,18 +133,24 @@ pub fn generate_password(opts: GenOptions) -> Result<String, AppError> {
 }
 
 #[tauri::command]
-pub fn copy_to_clipboard(text: String, clear_after_secs: u64) -> Result<(), AppError> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| AppError::InvalidInput(e.to_string()))?;
-    clipboard.set_text(text.clone()).map_err(|e| AppError::InvalidInput(e.to_string()))?;
+pub fn copy_to_clipboard(
+    app: AppHandle,
+    text: String,
+    clear_after_secs: u64,
+) -> Result<(), AppError> {
+    app.clipboard()
+        .write_text(text.clone())
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
     if clear_after_secs > 0 {
+        let app_handle = app.clone();
+        let original_text = text.clone();
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(clear_after_secs));
-            if let Ok(mut cb) = arboard::Clipboard::new() {
-                if let Ok(current) = cb.get_text() {
-                    if current == text {
-                        let _ = cb.set_text("");
-                    }
+            // Очищаем, только если в буфере всё ещё наш пароль
+            if let Ok(current) = app_handle.clipboard().read_text() {
+                if current == original_text {
+                    let _ = app_handle.clipboard().write_text("".to_string());
                 }
             }
         });
@@ -160,10 +167,13 @@ pub fn destroy_vault(
         return Err(AppError::NotInitialized);
     }
 
+    // Проверяем мастер-пароль. Если он неверный, файлы останутся нетронутыми.
     let _ = Session::unlock(state.vault_path.clone(), &master_password)?;
 
+    // Сбрасываем текущую активную сессию (уничтожаем ключ в памяти)
     let _ = state.take_session();
 
+    // Полностью удаляем файл хранилища и его бэкап
     let _ = std::fs::remove_file(&state.vault_path);
     
     let bak_path = state.vault_path.with_extension("enc.bak");

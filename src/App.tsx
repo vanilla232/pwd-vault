@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import type { VaultStatus } from "./lib/types";
 import { Sidebar, type Tab } from "./components/Sidebar";
@@ -32,6 +33,25 @@ export default function App() {
       setError(String(e));
     }
   }, [refreshStatus]);
+
+  // Эффект для автоблокировки при потере фокуса (сворачивании на Android)
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+
+    appWindow.onFocusChanged(({ payload: focused }) => {
+      // Если окно потеряло фокус (свернули) и хранилище открыто — блокируем
+      if (!focused && status?.unlocked) {
+        handleLock();
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [status?.unlocked, handleLock]);
 
   useEffect(() => {
     refreshStatus();
