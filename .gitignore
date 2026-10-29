@@ -31,3 +31,9 @@ Thumbs.db
 *.temp
 upload-keystore.jks
 keystore.properties
+src-tauri/gen/android/build/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/local.properties
+upload-keystore.jks
+keystore.properties
