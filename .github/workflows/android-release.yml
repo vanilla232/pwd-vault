@@ -57,44 +57,43 @@ jobs:
 
       - name: Patch build.gradle.kts
         run: |
-          python -c "
+          cat << 'PYEOF' > patch_gradle.py
           import re
           path = 'src-tauri/gen/android/app/build.gradle.kts'
           with open(path, 'r') as f:
               content = f.read()
 
-          # Вставляем импорт
           if 'import java.io.FileInputStream' not in content:
               content = 'import java.io.FileInputStream\n' + content
 
-          # Вставляем загрузку keystoreProperties перед блоком android
           keystore_load = '''
-val keystorePropertiesFile = rootProject.file(\"keystore.properties\")
-val keystoreProperties = java.util.Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
-}
-'''
+          val keystorePropertiesFile = rootProject.file("keystore.properties")
+          val keystoreProperties = java.util.Properties()
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+          }
+          '''
           content = content.replace('android {', keystore_load + '\nandroid {', 1)
 
           signing_configs = '''
-    signingConfigs {
-        create(\"release\") {
-            keyAlias = keystoreProperties[\"keyAlias\"] as String
-            keyPassword = keystoreProperties[\"keyPassword\"] as String
-            storeFile = file(keystoreProperties[\"storeFile\"] as String)
-            storePassword = keystoreProperties[\"storePassword\"] as String
-        }
-    }
-'''
+              signingConfigs {
+                  create("release") {
+                      keyAlias = keystoreProperties["keyAlias"] as String
+                      keyPassword = keystoreProperties["keyPassword"] as String
+                      storeFile = file(keystoreProperties["storeFile"] as String)
+                      storePassword = keystoreProperties["storePassword"] as String
+                  }
+              }
+          '''
           content = content.replace('buildTypes {', signing_configs + '\nbuildTypes {', 1)
 
-          # Применяем подпись внутри блока release
-          content = content.replace('isMinifyEnabled = false', 'isMinifyEnabled = false\n            signingConfig = signingConfigs.getByName(\"release\")', 1)
+          content = content.replace('isMinifyEnabled = false', 'isMinifyEnabled = false\n            signingConfig = signingConfigs.getByName("release")', 1)
 
           with open(path, 'w') as f:
               f.write(content)
-          "
+          PYEOF
+          python patch_gradle.py
+          rm patch_gradle.py
 
       - name: Build APK
         run: npx tauri android build --apk
