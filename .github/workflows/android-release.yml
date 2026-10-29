@@ -40,9 +40,35 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # НОВЫЙ ШАГ: Генерируем Android-проект на сервере GitHub
       - name: Init Android Project
         run: npx tauri android init
+
+      # НОВЫЙ ШАГ: Внедряем настройки подписи в сгенерированный Gradle
+      - name: Patch build.gradle.kts
+        run: |
+          cat << 'EOF' >> src-tauri/gen/android/app/build.gradle.kts
+
+          android {
+              signingConfigs {
+                  create("release") {
+                      val keystorePropertiesFile = rootProject.file("keystore.properties")
+                      if (keystorePropertiesFile.exists()) {
+                          val keystoreProperties = java.util.Properties()
+                          keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+                          keyAlias = keystoreProperties["keyAlias"] as String
+                          keyPassword = keystoreProperties["keyPassword"] as String
+                          storeFile = file(keystoreProperties["storeFile"] as String)
+                          storePassword = keystoreProperties["storePassword"] as String
+                      }
+                  }
+              }
+              buildTypes {
+                  getByName("release") {
+                      signingConfig = signingConfigs.getByName("release")
+                  }
+              }
+          }
+          EOF
 
       - name: Decode Keystore
         run: echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > upload-keystore.jks
